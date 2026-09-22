@@ -1,550 +1,223 @@
-CommerceGuard
+# CommerceGuard
 
-Intelligent Data Quality Monitoring for E-commerce Pipelines
+### Intelligent data-quality monitoring for e-commerce pipelines
 
-CommerceGuard is an end-to-end data engineering and machine learning project that monitors the quality of e-commerce data. It detects missing, duplicated, invalid, or unusual records before unreliable data reaches business dashboards, analytics systems, or machine learning models.
+[![Status: Planning](https://img.shields.io/badge/status-planning-blue)](#project-status)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](#technology-stack)
+[![Machine Learning](https://img.shields.io/badge/ML-anomaly%20detection-F7931E)](#machine-learning)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](#license)
 
-The project simulates a real e-commerce platform that processes customers, products, orders, order items, and payments every day. A data pipeline validates each batch, stores clean and rejected records separately, calculates quality metrics, and uses anomaly detection to identify unexpected behavior.
+CommerceGuard is an end-to-end **data engineering, machine learning, and software engineering** project that monitors the quality of e-commerce data.
 
-Project status: Planning / early development
+It validates daily customer, product, order, and payment data; separates invalid records; calculates quality metrics; and uses anomaly detection to identify unusual pipeline behavior before unreliable data reaches reports or ML systems.
 
-Table of Contents
+> This repository is being developed as an introductory machine learning portfolio project. The initial dataset is synthetic, allowing data failures to be introduced and evaluated safely.
 
-Why This Project?
+---
 
-Problem Statement
+## Table of contents
 
-Project Goals
+- [The problem](#the-problem)
+- [Proposed solution](#proposed-solution)
+- [Key features](#key-features)
+- [Architecture](#architecture)
+- [Machine learning](#machine-learning)
+- [Dataset](#dataset)
+- [Data validation](#data-validation)
+- [Technology stack](#technology-stack)
+- [Project structure](#project-structure)
+- [Development roadmap](#development-roadmap)
+- [Getting started](#getting-started)
+- [Evaluation](#evaluation)
+- [API design](#api-design)
+- [Testing](#testing)
+- [Future improvements](#future-improvements)
+- [Learning objectives](#learning-objectives)
+- [License](#license)
 
-System Overview
+---
 
-Main Features
+## The problem
 
-Machine Learning Problem
-
-Dataset
-
-Data Quality Rules
-
-Technology Stack
-
-Project Architecture
-
-Database Design
-
-Project Structure
-
-Implementation Roadmap
-
-Evaluation
-
-Installation
-
-Usage
-
-API Endpoints
-
-Testing
-
-Ethical and Technical Considerations
-
-Future Improvements
-
-Learning Outcomes
-
-License
-
-Why This Project?
-
-E-commerce companies depend on accurate data to calculate revenue, manage inventory, process payments, understand customer behavior, and make business decisions. A small pipeline failure can create incorrect reports or hide important operational problems.
+E-commerce companies depend on accurate data for revenue reporting, inventory management, payment processing, and customer analytics. A pipeline can complete successfully while still producing unreliable data.
 
 Examples include:
 
-Duplicate orders that inflate revenue
+- Duplicate orders that inflate revenue
+- Missing customer or product identifiers
+- Negative prices or quantities
+- Payments that do not match order totals
+- Orders linked to nonexistent customers
+- Sudden drops in daily order volume
+- Unexpected increases in failed payments
+- Schema, date-format, or currency changes
 
-Missing customer or product identifiers
+Traditional validation rules find known errors, but they may miss new or unexpected behavior.
 
-Negative prices or quantities
+## Proposed solution
 
-Payments that do not match order totals
+CommerceGuard combines two detection methods:
 
-Sudden and unexpected drops in daily order volume
+| Method | Question answered | Example |
+| --- | --- | --- |
+| Rule-based validation | Is this individual record valid? | A product price must be greater than zero. |
+| ML anomaly detection | Is this entire daily batch behaving normally? | Today's order volume is unusually low. |
 
-Changes in column names or data types
+Invalid records are preserved in a quarantine area with their failure reasons. Valid records are loaded into PostgreSQL, while daily quality metrics are analyzed by an anomaly-detection model.
 
-Invalid timestamps, currencies, or order statuses
+## Key features
 
-CommerceGuard combines deterministic validation rules with machine learning. Rules detect known problems, while anomaly detection helps discover unusual patterns that were not explicitly programmed.
+- Ingest daily e-commerce data from CSV or JSON files
+- Preserve an unchanged copy of every raw batch
+- Clean and standardize values through an ETL pipeline
+- Validate customers, products, orders, order items, and payments
+- Quarantine rejected records instead of deleting them
+- Track quality metrics for every pipeline execution
+- Detect unusual batches with an Isolation Forest model
+- Compare ML results with statistical and rule-based baselines
+- Expose results through a FastAPI backend
+- Visualize pipeline health in a Streamlit dashboard
+- Test pipeline, validation, feature, and API behavior
 
-Problem Statement
+## Architecture
 
-Traditional data-validation systems only detect conditions that developers already know about. However, an e-commerce dataset can pass all predefined rules and still behave abnormally.
-
-CommerceGuard answers two questions:
-
-Is every individual record valid?
-
-Does the complete daily dataset behave as expected?
-
-The first question is handled by validation rules. The second is handled through statistical analysis and machine learning.
-
-Project Goals
-
-Build a reproducible ETL pipeline for e-commerce data.
-
-Preserve raw data before applying transformations.
-
-Validate orders, customers, products, and payments.
-
-Separate valid records from rejected records.
-
-Calculate data-quality metrics for every pipeline run.
-
-Detect unusual daily batches using anomaly detection.
-
-Expose results through an API and monitoring dashboard.
-
-Apply software-engineering practices such as testing, logging, modular design, and version control.
-
-System Overview
-
+```mermaid
 flowchart TD
-    A[Data generator or source API] --> B[Raw data layer]
-    B --> C[ETL and validation pipeline]
-    C --> D[Clean records]
-    C --> E[Rejected records]
-    D --> F[(PostgreSQL)]
-    E --> F
-    F --> G[Quality metrics]
-    G --> H[Anomaly detection model]
-    H --> I[FastAPI service]
-    I --> J[Monitoring dashboard]
-    H --> K[Alerts]
+    A[Data generator or source] --> B[Raw data layer]
+    B --> C[ETL pipeline]
+    C --> D{Validation}
+    D -->|Valid| E[(PostgreSQL)]
+    D -->|Invalid| F[Quarantine]
+    E --> G[Quality metrics]
+    F --> G
+    G --> H[Anomaly model]
+    H --> I[FastAPI]
+    I --> J[Dashboard and alerts]
+```
 
-Main Features
+### Processing flow
 
-1. E-commerce data ingestion
+1. A source provides one daily data batch.
+2. The original files are stored in the raw layer.
+3. The ETL pipeline cleans and standardizes each entity.
+4. Validation rules separate valid and invalid records.
+5. Valid data, rejected records, and run metadata are stored.
+6. Daily metrics are calculated and passed to the ML model.
+7. Predictions and possible causes appear in the dashboard.
 
-Read daily CSV or JSON batches.
+## Machine learning
 
-Optionally collect data from an external API.
+### Problem definition
 
-Store an unchanged copy of every source batch.
+The first ML task is **unsupervised anomaly detection**. The model learns patterns from normal historical pipeline runs and assigns an anomaly score to each new daily batch.
 
-Record the ingestion time and source.
+### Input features
 
-2. ETL pipeline
+| Feature | Meaning |
+| --- | --- |
+| `row_count` | Total orders received |
+| `unique_customer_count` | Customers who placed orders |
+| `missing_value_ratio` | Proportion of missing required values |
+| `duplicate_ratio` | Proportion of duplicate records |
+| `rejected_record_ratio` | Proportion rejected by validation |
+| `average_order_value` | Mean order total |
+| `order_value_std` | Variation in order values |
+| `refund_ratio` | Proportion of refunded orders |
+| `payment_failure_ratio` | Proportion of failed payments |
+| `pipeline_duration_seconds` | Batch-processing time |
 
-Extract raw customers, products, orders, order items, and payments.
+### Models
 
-Standardize dates, currencies, categories, and identifiers.
+| Model | Purpose |
+| --- | --- |
+| Fixed thresholds | Rule-based baseline |
+| Z-score or IQR | Statistical baseline |
+| Isolation Forest | Primary anomaly-detection model |
+| Local Outlier Factor | Optional comparison |
 
-Validate relationships between entities.
+The project compares simple and ML-based methods instead of assuming the most complex model is automatically the best.
 
-Load valid records into PostgreSQL.
+### Example output
 
-Move invalid records into a quarantine area with rejection reasons.
-
-3. Rule-based data validation
-
-Detect missing required fields.
-
-Detect duplicated identifiers.
-
-Verify accepted values and data types.
-
-Validate prices, quantities, totals, and timestamps.
-
-Check relationships such as whether an order references an existing customer.
-
-4. Machine learning anomaly detection
-
-Build one feature vector for each daily pipeline run.
-
-Learn the typical behavior of daily e-commerce data.
-
-Assign an anomaly score to new batches.
-
-Flag suspicious batches for investigation.
-
-5. Dashboard and reporting
-
-Display the current pipeline status.
-
-Visualize quality metrics over time.
-
-Show failed validation rules and rejected records.
-
-Display anomaly scores and possible causes.
-
-Compare current metrics with historical values.
-
-Machine Learning Problem
-
-Primary task
-
-The initial ML task is unsupervised anomaly detection. The model learns from historical pipeline metrics and determines whether a new daily batch is normal or unusual.
-
-Each pipeline run can be represented using features such as:
-
-Feature
-
-Description
-
-row_count
-
-Number of orders received during the run
-
-unique_customer_count
-
-Number of customers placing orders
-
-missing_value_ratio
-
-Percentage of missing required values
-
-duplicate_ratio
-
-Percentage of duplicated records
-
-rejected_record_ratio
-
-Percentage of records rejected by validation
-
-average_order_value
-
-Mean order total for the batch
-
-order_value_std
-
-Variation in order totals
-
-refund_ratio
-
-Percentage of refunded orders
-
-payment_failure_ratio
-
-Percentage of unsuccessful payments
-
-pipeline_duration_seconds
-
-Time required to process the batch
-
-Models to compare
-
-Rule-based baseline: fixed thresholds defined by the developer
-
-Statistical baseline: Z-score or interquartile-range detection
-
-Isolation Forest: primary unsupervised ML model
-
-Local Outlier Factor: optional comparison model
-
-The project will compare these approaches instead of assuming that the most complex model is automatically the best.
-
-Example prediction
-
+```json
 {
   "pipeline_run_id": 152,
   "status": "anomaly",
   "anomaly_score": 0.87,
   "possible_causes": [
-    "Order volume is 51% lower than its historical average",
+    "Order volume is 51% below its historical average",
     "Missing customer identifiers increased to 14%"
   ]
 }
-
-Dataset
-
-The first version uses a synthetic e-commerce dataset so that data failures can be introduced intentionally and labeled precisely. This avoids exposing real customer information and makes model evaluation reproducible.
-
-Main entities
-
-Customers
-
-customer_id
-
-full_name
-
-email
-
-country
-
-created_at
-
-Products
-
-product_id
-
-name
-
-category
-
-unit_price
-
-stock_quantity
-
-Orders
-
-order_id
-
-customer_id
-
-order_date
-
-status
-
-currency
-
-order_total
-
-Order items
-
-order_item_id
-
-order_id
-
-product_id
-
-quantity
-
-unit_price
-
-Payments
-
-payment_id
-
-order_id
-
-payment_method
-
-payment_status
-
-amount
-
-payment_date
-
-Simulated anomalies
-
-The data generator will occasionally introduce controlled problems:
-
-Duplicate order or payment IDs
-
-Missing customer IDs
-
-Negative prices or quantities
-
-Unsupported currencies
-
-Invalid order statuses
-
-Payment totals that do not match order totals
-
-Orders referencing nonexistent products
-
-Extreme transaction values
-
-Sudden changes in order volume
-
-Increased payment-failure rates
-
-Incorrect date formats
-
-Each generated batch will contain metadata indicating which anomalies were injected. These labels are used only for evaluation and are not provided to the unsupervised model during training.
-
-Data Quality Rules
-
-Entity
-
-Validation rule
-
-Severity
-
-Customer
-
-customer_id must be present and unique
-
-Critical
-
-Customer
-
-Email must follow a valid format
-
-Warning
-
-Product
-
-Price must be greater than zero
-
-Critical
-
-Product
-
-Stock quantity cannot be negative
-
-Critical
-
-Order
-
-Order ID must be present and unique
-
-Critical
-
-Order
-
-Customer must exist
-
-Critical
-
-Order
-
-Status must belong to the accepted status list
-
-Warning
-
-Order item
-
-Quantity must be greater than zero
-
-Critical
-
-Order item
-
-Product and order must exist
-
-Critical
-
-Payment
-
-Amount must be greater than zero
-
-Critical
-
-Payment
-
-Payment total must match the related order total
-
-Critical
-
-All entities
-
-Required timestamps must be valid
-
-Critical
-
-Technology Stack
-
-Area
-
-Technology
-
-Programming language
-
-Python 3.12
-
-Data processing
-
-Pandas
-
-Machine learning
-
-Scikit-learn
-
-Database
-
-PostgreSQL
-
-ORM and migrations
-
-SQLAlchemy and Alembic
-
-Backend API
-
-FastAPI
-
-Dashboard
-
-Streamlit
-
-Data validation
-
-Pandera or custom validation functions
-
-Scheduling
-
-Prefect, added after the MVP
-
-Testing
-
-Pytest
-
-Code quality
-
-Ruff and Black
-
-CI
-
-GitHub Actions
-
-Containerization
-
-Docker, optional after local development
-
-The MVP intentionally avoids adding Spark, Kafka, Airflow, and multiple cloud services. Those technologies can be explored later after the core pipeline and ML model work correctly.
-
-Project Architecture
-
-CommerceGuard uses a layered design:
-
-Source layer: generates or receives e-commerce data.
-
-Raw layer: preserves the original input without modification.
-
-Processing layer: cleans, standardizes, and validates records.
-
-Storage layer: stores clean records, rejected records, and quality metrics.
-
-ML layer: trains the anomaly detector and produces anomaly scores.
-
-Service layer: exposes pipeline and prediction results through FastAPI.
-
-Presentation layer: displays operational information in Streamlit.
-
-Database Design
-
-The initial database contains the following groups of tables:
-
-Business tables
-
-customers
-
-products
-
-orders
-
-order_items
-
-payments
-
-Monitoring tables
-
-pipeline_runs
-
-data_quality_metrics
-
-validation_failures
-
-rejected_records
-
-anomaly_predictions
-
-alert_history
-
-Every monitoring record is connected to a pipeline_run_id, making it possible to reproduce and investigate a specific run.
-
-Project Structure
-
+```
+
+## Dataset
+
+The first version uses generated e-commerce data. Synthetic data protects privacy, makes the project reproducible, and allows known anomalies to be injected for evaluation.
+
+### Entities
+
+| Entity | Important fields |
+| --- | --- |
+| Customers | `customer_id`, `full_name`, `email`, `country`, `created_at` |
+| Products | `product_id`, `name`, `category`, `unit_price`, `stock_quantity` |
+| Orders | `order_id`, `customer_id`, `order_date`, `status`, `currency`, `order_total` |
+| Order items | `order_item_id`, `order_id`, `product_id`, `quantity`, `unit_price` |
+| Payments | `payment_id`, `order_id`, `payment_method`, `payment_status`, `amount` |
+
+### Injected anomalies
+
+- Duplicate order or payment IDs
+- Missing customer IDs
+- Negative prices or quantities
+- Invalid dates, currencies, or statuses
+- Payments that do not match order totals
+- References to nonexistent customers or products
+- Unusually high transaction values
+- Sudden changes in daily order volume
+- Increased payment-failure rates
+
+The generator records which anomalies were injected. These labels are used for evaluation but are not provided to the unsupervised model during training.
+
+## Data validation
+
+| Entity | Rule | Severity |
+| --- | --- | --- |
+| Customer | Customer ID is present and unique | Critical |
+| Customer | Email has a valid format | Warning |
+| Product | Unit price is greater than zero | Critical |
+| Product | Stock quantity is not negative | Critical |
+| Order | Order ID is present and unique | Critical |
+| Order | Referenced customer exists | Critical |
+| Order | Status belongs to the accepted list | Warning |
+| Order item | Quantity is greater than zero | Critical |
+| Order item | Referenced order and product exist | Critical |
+| Payment | Amount is greater than zero | Critical |
+| Payment | Amount matches the related order total | Critical |
+| All entities | Required timestamps are valid | Critical |
+
+## Technology stack
+
+| Layer | Technology |
+| --- | --- |
+| Language | Python 3.12 |
+| Data processing | Pandas |
+| Machine learning | Scikit-learn |
+| Database | PostgreSQL |
+| ORM and migrations | SQLAlchemy and Alembic |
+| Backend API | FastAPI |
+| Dashboard | Streamlit |
+| Validation | Pandera or custom validators |
+| Testing | Pytest |
+| Code quality | Ruff and Black |
+| CI | GitHub Actions |
+| Scheduling | Prefect after the MVP |
+
+> Spark, Kafka, Airflow, and cloud infrastructure are intentionally excluded from the MVP. They may be explored only after the core pipeline and model work correctly.
+
+## Project structure
+
+```text
 commerceguard/
 ├── data/
 │   ├── raw/
@@ -554,349 +227,226 @@ commerceguard/
 │   ├── 01_exploratory_data_analysis.ipynb
 │   ├── 02_feature_engineering.ipynb
 │   └── 03_model_experiments.ipynb
-├── src/
-│   └── commerceguard/
-│       ├── api/
-│       ├── database/
-│       ├── generator/
-│       ├── ingestion/
-│       ├── validation/
-│       ├── pipelines/
-│       ├── features/
-│       ├── models/
-│       └── monitoring/
+├── src/commerceguard/
+│   ├── api/
+│   ├── database/
+│   ├── generator/
+│   ├── ingestion/
+│   ├── validation/
+│   ├── pipelines/
+│   ├── features/
+│   ├── models/
+│   └── monitoring/
 ├── dashboard/
-│   └── app.py
 ├── tests/
 │   ├── unit/
 │   └── integration/
 ├── models/
 ├── alembic/
-├── .github/
-│   └── workflows/
+├── .github/workflows/
 ├── .env.example
 ├── alembic.ini
-├── docker-compose.yml
 ├── pyproject.toml
 └── README.md
+```
 
-Implementation Roadmap
+## Development roadmap
 
-Phase 1: Data generation and exploration
+### Project status
 
-Define the e-commerce entities and relationships.
+The project is currently in the **planning and data-design stage**.
 
-Generate several months of normal daily data.
+### MVP
 
-Inject controlled anomalies into selected batches.
+- [ ] Define database entities and relationships
+- [ ] Build a reproducible e-commerce data generator
+- [ ] Generate normal and anomalous daily batches
+- [ ] Perform exploratory data analysis
+- [ ] Create the PostgreSQL schema and migrations
+- [ ] Implement the ETL pipeline
+- [ ] Add critical validation rules
+- [ ] Store rejected records and failure reasons
+- [ ] Calculate daily quality metrics
+- [ ] Build statistical baselines
+- [ ] Train and evaluate an Isolation Forest
+- [ ] Expose pipeline results through FastAPI
+- [ ] Create the monitoring dashboard
+- [ ] Add unit and integration tests
 
-Explore distributions, correlations, missing values, and outliers.
+### After the MVP
 
-Deliverable: reproducible dataset and exploratory notebook.
+- [ ] Schedule pipeline execution with Prefect
+- [ ] Add email, Discord, or Slack alerts
+- [ ] Add authentication and role-based access
+- [ ] Containerize the application
+- [ ] Add experiment tracking and model versioning
+- [ ] Deploy the API, database, and dashboard
 
-Phase 2: ETL and database
+## Getting started
 
-Create the PostgreSQL schema.
+> The commands below describe the planned project interface and will become usable as each component is implemented.
 
-Save original batches in the raw layer.
+### Prerequisites
 
-Transform fields into consistent formats.
+- Python 3.12
+- PostgreSQL 15+
+- Git
 
-Load valid records into the business tables.
+### 1. Clone the repository
 
-Record metadata for every pipeline execution.
-
-Deliverable: repeatable raw-to-database pipeline.
-
-Phase 3: Data validation
-
-Implement entity-level validation rules.
-
-Store failure reasons and severity levels.
-
-Quarantine rejected records.
-
-Calculate a data-quality score for each run.
-
-Deliverable: validation report for every processed batch.
-
-Phase 4: Machine learning
-
-Create one metric vector per daily pipeline run.
-
-Split historical runs into training and testing periods.
-
-Establish rule-based and statistical baselines.
-
-Train and tune an Isolation Forest.
-
-Evaluate detection performance using injected anomaly labels.
-
-Save the selected preprocessing pipeline and model.
-
-Deliverable: evaluated anomaly-detection model.
-
-Phase 5: API and dashboard
-
-Build endpoints for pipeline runs, failures, metrics, and predictions.
-
-Display recent pipeline health and historical trends.
-
-Allow users to inspect rejected records.
-
-Explain why a batch was flagged when possible.
-
-Deliverable: working local monitoring application.
-
-Phase 6: Engineering improvements
-
-Add automated tests and continuous integration.
-
-Add structured logging and robust error handling.
-
-Schedule daily executions with Prefect.
-
-Send email, Discord, or Slack alerts.
-
-Add Docker support and deployment documentation.
-
-Deliverable: portfolio-ready project with a reproducible setup.
-
-Evaluation
-
-Although Isolation Forest is unsupervised, the injected anomalies provide ground truth for evaluating the project.
-
-The following metrics will be reported:
-
-Precision
-
-Recall
-
-F1-score
-
-Confusion matrix
-
-False-positive rate
-
-Percentage of injected anomalies detected
-
-Average time required to process a batch
-
-Recall is important because missing a serious data problem can affect reports and decisions. Precision is also important because excessive false alarms can cause users to ignore the monitoring system.
-
-To prevent data leakage, training and evaluation use a chronological split. Future pipeline runs are never used to predict past runs. Metrics that become available only after an incident is resolved are not included as model inputs.
-
-Installation
-
-The commands below describe the planned local setup and may change while the project is under development.
-
-Prerequisites
-
-Python 3.12
-
-PostgreSQL 15 or newer
-
-Git
-
-1. Clone the repository
-
+```bash
 git clone https://github.com/YOUR_USERNAME/commerceguard.git
 cd commerceguard
+```
 
-2. Create a virtual environment
+### 2. Create a virtual environment
 
-On Windows PowerShell:
+<details>
+<summary>Windows PowerShell</summary>
 
+```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
+```
 
-On Linux or macOS:
+</details>
 
+<details>
+<summary>Linux or macOS</summary>
+
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
+```
 
-3. Install dependencies
+</details>
 
+### 3. Install dependencies
+
+```bash
 pip install -e ".[dev]"
+```
 
-4. Configure environment variables
+### 4. Configure the environment
 
-cp .env.example .env
+Copy `.env.example` to `.env` and configure the database connection:
 
-Example configuration:
-
+```env
 DATABASE_URL=postgresql+psycopg://commerceguard:password@localhost:5432/commerceguard
 RAW_DATA_PATH=data/raw
 PROCESSED_DATA_PATH=data/processed
 REJECTED_DATA_PATH=data/rejected
 MODEL_PATH=models/isolation_forest.joblib
+```
 
-Never commit the real .env file or database credentials.
+Never commit the `.env` file or real credentials.
 
-5. Apply database migrations
+### 5. Prepare the database
 
+```bash
 alembic upgrade head
+```
 
-Usage
+### 6. Run the project
 
-Generate sample data:
-
+```bash
+# Generate 180 days of sample data
 python -m commerceguard.generator --days 180 --inject-anomalies
 
-Run the ETL and validation pipeline:
-
+# Run the ETL and validation pipeline
 python -m commerceguard.pipelines.daily_orders
 
-Train the anomaly-detection model:
-
+# Train the anomaly model
 python -m commerceguard.models.train
 
-Start the API:
-
+# Start the API
 uvicorn commerceguard.api.main:app --reload
 
-Start the dashboard:
-
+# Start the dashboard in a second terminal
 streamlit run dashboard/app.py
+```
 
-API Endpoints
+## Evaluation
 
-Planned endpoints include:
+Injected anomalies provide ground truth for evaluating the unsupervised model.
 
-Method
+The project reports:
 
-Endpoint
+- Precision
+- Recall
+- F1-score
+- Confusion matrix
+- False-positive rate
+- Percentage of injected anomalies detected
+- Batch-processing time
 
-Description
+A chronological train/test split is used so future runs are never used to predict past behavior. Features that only become available after an incident is resolved are excluded to prevent data leakage.
 
-GET
+## API design
 
-/health
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/health` | Check API availability |
+| `GET` | `/pipeline-runs` | List recent runs |
+| `GET` | `/pipeline-runs/{id}` | Inspect one run |
+| `GET` | `/pipeline-runs/{id}/metrics` | Return quality metrics |
+| `GET` | `/pipeline-runs/{id}/failures` | Return validation failures |
+| `GET` | `/anomalies` | List detected anomalies |
+| `POST` | `/predict` | Score new pipeline metrics |
 
-Check whether the API is running
+## Testing
 
-GET
-
-/pipeline-runs
-
-List recent pipeline runs
-
-GET
-
-/pipeline-runs/{id}
-
-Inspect one pipeline run
-
-GET
-
-/pipeline-runs/{id}/metrics
-
-Get quality metrics for a run
-
-GET
-
-/pipeline-runs/{id}/failures
-
-List failed validation rules
-
-GET
-
-/anomalies
-
-List detected anomalies
-
-POST
-
-/predict
-
-Score a new set of pipeline metrics
-
-Testing
-
-Run all tests:
-
+```bash
 pytest
+```
 
-The test suite should cover:
+The test suite will cover:
 
-Data-generation reproducibility
+- Reproducible data generation
+- Transformation and validation logic
+- Database operations
+- Feature calculations
+- Model input and output contracts
+- API responses
+- End-to-end pipeline execution
 
-Transformation logic
+## Future improvements
 
-Individual validation rules
+- Connect to a public e-commerce dataset or demo API
+- Detect schema changes and data drift
+- Model weekends, holidays, promotions, and seasonality
+- Explain anomalous metrics more precisely
+- Support multiple stores and data sources
+- Add alert acknowledgment and incident workflows
+- Track experiments and model versions with MLflow
+- Evaluate streaming tools when the project scale justifies them
 
-Database operations
+## Learning objectives
 
-Feature calculations
+CommerceGuard is designed to demonstrate:
 
-Model input and output formats
+- Exploratory data analysis and feature engineering
+- ML baselines, model training, and evaluation
+- Correct evaluation of an unsupervised model
+- ETL pipeline and relational database design
+- Data validation, observability, and incident investigation
+- Backend API development
+- Modular architecture and automated testing
+- Reproducibility, monitoring, and technical documentation
 
-API responses
+## Privacy and safety
 
-End-to-end pipeline execution
+- Synthetic data is used initially to avoid exposing customer information.
+- Real customer data must be anonymized before processing.
+- Payment card details must never be collected or stored.
+- An anomaly indicates unusual behavior, not proof of fraud or corruption.
+- Predictions should support human investigation rather than silently delete data.
+- Rejected records remain available for debugging and recovery.
 
-Ethical and Technical Considerations
+## License
 
-Synthetic data is used initially to protect customer privacy.
+This project is intended for educational and portfolio purposes and can be released under the [MIT License](LICENSE).
 
-Real customer data should be anonymized before processing.
+---
 
-Payment card details must never be collected or stored.
-
-An anomaly is not automatically proof of corruption or fraud.
-
-Predictions should assist investigation, not silently delete data.
-
-Rejected records are preserved for debugging and possible recovery.
-
-Model performance can degrade as customer behavior and business activity change.
-
-Future Improvements
-
-Connect to a real public e-commerce dataset or demo API.
-
-Monitor schema changes and data drift.
-
-Add seasonal features for weekends, holidays, and promotions.
-
-Compare Isolation Forest with additional anomaly-detection models.
-
-Add alert acknowledgment and incident-management workflows.
-
-Add role-based authentication.
-
-Support multiple stores and data sources.
-
-Introduce model versioning and experiment tracking with MLflow.
-
-Deploy the API, database, pipeline, and dashboard.
-
-Explore Kafka or Spark only when data scale justifies them.
-
-Learning Outcomes
-
-By completing CommerceGuard, I aim to demonstrate an understanding of:
-
-The complete machine learning lifecycle
-
-Exploratory data analysis and feature engineering
-
-Supervised evaluation of an unsupervised model
-
-ETL pipeline design
-
-Relational database modeling
-
-Data-quality validation and observability
-
-Backend API development
-
-Testing and continuous integration
-
-Reproducibility, monitoring, and technical documentation
-
-License
-
-This project is intended for educational and portfolio purposes. It can be released under the MIT License.
-
-If you find this project useful or have suggestions, feel free to open an issue or submit a pull request.
+If you have a suggestion or find a problem, please open an issue or submit a pull request.

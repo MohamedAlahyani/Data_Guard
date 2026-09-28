@@ -5,13 +5,12 @@
 [![Status: Planning](https://img.shields.io/badge/status-planning-blue)](#project-status)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](#technology-stack)
 [![Machine Learning](https://img.shields.io/badge/ML-anomaly%20detection-F7931E)](#machine-learning)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](#license)
 
 CommerceGuard is an end-to-end **data engineering, machine learning, and software engineering** project that monitors the quality of e-commerce data.
 
-It validates daily customer, product, order, and payment data; separates invalid records; calculates quality metrics; and uses anomaly detection to identify unusual pipeline behavior before unreliable data reaches reports or ML systems.
+The planned pipeline will replay historical Olist orders as daily batches, validate related customer, product, seller, item, payment, and review data, and calculate quality metrics. Anomaly detection will help identify unusual pipeline behavior before unreliable data reaches reports or ML systems.
 
-> This repository is being developed as an introductory machine learning portfolio project. The initial dataset is synthetic, allowing data failures to be introduced and evaluated safely.
+> This introductory machine learning portfolio project currently contains a README and nine Olist CSV files in `dataset/`. The pipeline, model, API, and dashboard are planned; they are not implemented yet.
 
 ---
 
@@ -33,6 +32,7 @@ It validates daily customer, product, order, and payment data; separates invalid
 - [Testing](#testing)
 - [Future improvements](#future-improvements)
 - [Learning objectives](#learning-objectives)
+- [Privacy and safety](#privacy-and-safety)
 - [License](#license)
 
 ---
@@ -45,12 +45,12 @@ Examples include:
 
 - Duplicate orders that inflate revenue
 - Missing customer or product identifiers
-- Negative prices or quantities
+- Negative item prices or freight values
 - Payments that do not match order totals
 - Orders linked to nonexistent customers
 - Sudden drops in daily order volume
-- Unexpected increases in failed payments
-- Schema, date-format, or currency changes
+- Unexpected increases in missing payment records
+- Schema or date-format changes
 
 Traditional validation rules find known errors, but they may miss new or unexpected behavior.
 
@@ -60,17 +60,19 @@ CommerceGuard combines two detection methods:
 
 | Method | Question answered | Example |
 | --- | --- | --- |
-| Rule-based validation | Is this individual record valid? | A product price must be greater than zero. |
+| Rule-based validation | Is this individual record valid? | An order item must reference an existing product. |
 | ML anomaly detection | Is this entire daily batch behaving normally? | Today's order volume is unusually low. |
 
-Invalid records are preserved in a quarantine area with their failure reasons. Valid records are loaded into PostgreSQL, while daily quality metrics are analyzed by an anomaly-detection model.
+The planned pipeline will preserve invalid records in a quarantine area with their failure reasons, load valid records into PostgreSQL, and analyze daily quality metrics with an anomaly-detection model.
 
 ## Key features
 
-- Ingest daily e-commerce data from CSV or JSON files
+Planned capabilities:
+
+- Ingest the Olist CSV files and replay orders in daily batches
 - Preserve an unchanged copy of every raw batch
 - Clean and standardize values through an ETL pipeline
-- Validate customers, products, orders, order items, and payments
+- Validate customers, products, sellers, orders, order items, payments, and reviews
 - Quarantine rejected records instead of deleting them
 - Track quality metrics for every pipeline execution
 - Detect unusual batches with an Isolation Forest model
@@ -83,7 +85,7 @@ Invalid records are preserved in a quarantine area with their failure reasons. V
 
 ```mermaid
 flowchart TD
-    A[Data generator or source] --> B[Raw data layer]
+    A[Olist CSV files and historical replay] --> B[Raw data layer]
     B --> C[ETL pipeline]
     C --> D{Validation}
     D -->|Valid| E[(PostgreSQL)]
@@ -97,7 +99,7 @@ flowchart TD
 
 ### Processing flow
 
-1. A source provides one daily data batch.
+1. Group orders by `order_purchase_timestamp` date and select related records by their keys to simulate a daily batch. Reference tables are loaded separately.
 2. The original files are stored in the raw layer.
 3. The ETL pipeline cleans and standardizes each entity.
 4. Validation rules separate valid and invalid records.
@@ -109,22 +111,24 @@ flowchart TD
 
 ### Problem definition
 
-The first ML task is **unsupervised anomaly detection**. The model learns patterns from normal historical pipeline runs and assigns an anomaly score to each new daily batch.
+The first ML task is **unsupervised anomaly detection**. The planned model will learn patterns from chronological historical batches and assign an anomaly score to each new batch. Olist has no pipeline-incident labels, and its historical records must not be assumed to be error-free.
 
 ### Input features
 
 | Feature | Meaning |
 | --- | --- |
-| `row_count` | Total orders received |
-| `unique_customer_count` | Customers who placed orders |
-| `missing_value_ratio` | Proportion of missing required values |
-| `duplicate_ratio` | Proportion of duplicate records |
-| `rejected_record_ratio` | Proportion rejected by validation |
-| `average_order_value` | Mean order total |
-| `order_value_std` | Variation in order values |
-| `refund_ratio` | Proportion of refunded orders |
-| `payment_failure_ratio` | Proportion of failed payments |
-| `pipeline_duration_seconds` | Batch-processing time |
+| `row_count` | Orders in the purchase-date batch |
+| `unique_customer_count` | Distinct `customer_unique_id` values after joining customers |
+| `missing_value_ratio` | Missing required values divided by required values checked |
+| `duplicate_ratio` | Duplicate records under each table's defined key policy |
+| `rejected_record_ratio` | Rejected records divided by records validated |
+| `average_order_value` | Mean per-order sum of `price + freight_value` for orders with items |
+| `order_value_std` | Standard deviation of those per-order totals |
+| `missing_payment_ratio` | Orders with no matching payment record divided by orders checked |
+| `payment_mismatch_ratio` | Comparable orders whose aggregated payments differ from item totals beyond a documented tolerance |
+| `pipeline_duration_seconds` | Processing time measured by the future pipeline, not supplied by Olist |
+
+Refund and payment-failure rates cannot be calculated from these files: there are no refund or payment-status fields. Order status, delivery outcomes, and review scores describe the exported historical state. Use them only for retrospective analysis unless their availability at the scoring time can be established.
 
 ### Models
 
@@ -153,50 +157,75 @@ The project compares simple and ML-based methods instead of assuming the most co
 
 ## Dataset
 
-The first version uses generated e-commerce data. Synthetic data protects privacy, makes the project reproducible, and allows known anomalies to be injected for evaluation.
+The repository contains the **Brazilian E-Commerce Public Dataset by Olist**. Dataset source: [Olist on Kaggle](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce).
 
-### Entities
+The counts and observations below were measured from the local CSV files with a CSV parser, excluding headers. Purchase timestamps range from **2016-09-04 21:15:19** to **2018-10-17 17:30:18**. These are historical exports, not live daily feeds.
 
-| Entity | Important fields |
-| --- | --- |
-| Customers | `customer_id`, `full_name`, `email`, `country`, `created_at` |
-| Products | `product_id`, `name`, `category`, `unit_price`, `stock_quantity` |
-| Orders | `order_id`, `customer_id`, `order_date`, `status`, `currency`, `order_total` |
-| Order items | `order_item_id`, `order_id`, `product_id`, `quantity`, `unit_price` |
-| Payments | `payment_id`, `order_id`, `payment_method`, `payment_status`, `amount` |
+### Files and schema
 
-### Injected anomalies
+All paths are relative to `dataset/`. Column names below preserve the original spelling, including `lenght`.
 
-- Duplicate order or payment IDs
-- Missing customer IDs
-- Negative prices or quantities
-- Invalid dates, currencies, or statuses
-- Payments that do not match order totals
-- References to nonexistent customers or products
-- Unusually high transaction values
-- Sudden changes in daily order volume
-- Increased payment-failure rates
+| File | Rows | Columns |
+| --- | ---: | --- |
+| `olist_customers_dataset.csv` | 99,441 | `customer_id`, `customer_unique_id`, `customer_zip_code_prefix`, `customer_city`, `customer_state` |
+| `olist_orders_dataset.csv` | 99,441 | `order_id`, `customer_id`, `order_status`, `order_purchase_timestamp`, `order_approved_at`, `order_delivered_carrier_date`, `order_delivered_customer_date`, `order_estimated_delivery_date` |
+| `olist_order_items_dataset.csv` | 112,650 | `order_id`, `order_item_id`, `product_id`, `seller_id`, `shipping_limit_date`, `price`, `freight_value` |
+| `olist_order_payments_dataset.csv` | 103,886 | `order_id`, `payment_sequential`, `payment_type`, `payment_installments`, `payment_value` |
+| `olist_order_reviews_dataset.csv` | 99,224 | `review_id`, `order_id`, `review_score`, `review_comment_title`, `review_comment_message`, `review_creation_date`, `review_answer_timestamp` |
+| `olist_products_dataset.csv` | 32,951 | `product_id`, `product_category_name`, `product_name_lenght`, `product_description_lenght`, `product_photos_qty`, `product_weight_g`, `product_length_cm`, `product_height_cm`, `product_width_cm` |
+| `olist_sellers_dataset.csv` | 3,095 | `seller_id`, `seller_zip_code_prefix`, `seller_city`, `seller_state` |
+| `olist_geolocation_dataset.csv` | 1,000,163 | `geolocation_zip_code_prefix`, `geolocation_lat`, `geolocation_lng`, `geolocation_city`, `geolocation_state` |
+| `product_category_name_translation.csv` | 71 | `product_category_name`, `product_category_name_english` |
 
-The generator records which anomalies were injected. These labels are used for evaluation but are not provided to the unsupervised model during training.
+### Relationships and aggregation
+
+- Join orders to customers on `customer_id`. The customer file has 99,441 distinct `customer_id` values and 96,096 distinct `customer_unique_id` values; use the latter for distinct shoppers across orders.
+- Join items, payments, and reviews to orders on `order_id`. Each can have multiple rows per order. Item keys are `(order_id, order_item_id)`; payment keys are `(order_id, payment_sequential)`.
+- Join items to products on `product_id` and sellers on `seller_id`. Join product categories to translations on `product_category_name`, preserving products without a matching translation.
+- Match customer or seller ZIP prefixes to `geolocation_zip_code_prefix` only after defining an aggregation or lookup policy. There are 19,015 distinct prefixes across 1,000,163 geolocation rows, so a direct join can multiply rows. Read ZIP prefixes as strings to preserve leading zeros.
+- Aggregate items and payments **separately per order before joining**. Derive an item-based total as `sum(price + freight_value)` and a payment total as `sum(payment_value)`. The order file has no stored `order_total`, and the item file has no `quantity` column.
+- Do not assume `review_id` or `order_id` is unique in reviews: the file has 98,410 distinct review IDs and 98,673 distinct order IDs. Define a review-selection or aggregation policy before joining to order-level features.
+
+### Observed data characteristics
+
+- Order statuses: `delivered`, `shipped`, `canceled`, `unavailable`, `invoiced`, `processing`, `created`, and `approved`.
+- Payment types: `credit_card`, `boleto`, `voucher`, `debit_card`, and `not_defined`. Nine payment rows have zero `payment_value`; investigate them instead of automatically treating them as failed payments.
+- There are 160 missing approval timestamps, 1,783 missing carrier-delivery timestamps, and 2,965 missing customer-delivery timestamps. Missingness must be interpreted alongside order status.
+- Product categories are missing in 610 rows; product weight and each dimension are missing in two rows.
+- Review titles are empty in 87,656 rows and review messages in 58,247 rows. These optional fields should not be required by validation.
+- Items cover 98,666 orders and payments cover 99,440 orders, compared with 99,441 orders in the orders file. Investigate coverage by status before rejecting records.
+- The files do not provide customer names or emails, inventory counts, product names or descriptions themselves, currency codes, refund events, or payment success/failure flags.
+
+### Controlled anomaly injection (planned)
+
+Use copies of the original data to inject duplicate keys, missing identifiers, broken references, negative prices or freight, invalid dates or statuses, payment-total mismatches, and daily volume changes. Preserve the original CSV files unchanged. Record injected changes and affected batches separately for evaluation; never include injection labels in model inputs.
 
 ## Data validation
 
+These are proposed rules, not results from an implemented validator.
+
 | Entity | Rule | Severity |
 | --- | --- | --- |
-| Customer | Customer ID is present and unique | Critical |
-| Customer | Email has a valid format | Warning |
-| Product | Unit price is greater than zero | Critical |
-| Product | Stock quantity is not negative | Critical |
-| Order | Order ID is present and unique | Critical |
-| Order | Referenced customer exists | Critical |
-| Order | Status belongs to the accepted list | Warning |
-| Order item | Quantity is greater than zero | Critical |
-| Order item | Referenced order and product exist | Critical |
-| Payment | Amount is greater than zero | Critical |
-| Payment | Amount matches the related order total | Critical |
-| All entities | Required timestamps are valid | Critical |
+| Customer / product / seller | Entity ID is present and unique in its own table | Critical |
+| Order | `order_id` is present and unique; referenced customer exists | Critical |
+| Order | Status belongs to the observed accepted list | Warning |
+| Order | Purchase and estimated delivery timestamps parse; other timestamps are checked when present with status-aware completeness rules | Critical / warning |
+| Order item | `(order_id, order_item_id)` is unique; referenced order, product, and seller exist | Critical |
+| Order item | `price` is positive and `freight_value` is nonnegative | Critical |
+| Payment | `(order_id, payment_sequential)` is unique; referenced order exists | Critical |
+| Payment | `payment_value` is nonnegative; zero values and `not_defined` types are flagged for review | Critical / warning |
+| Payment | Per-order payment sum matches item price plus freight within a documented rounding tolerance, where both sides exist | Warning |
+| Product | Missing categories or physical attributes are reported; present weights and dimensions are checked for plausibility | Warning |
+| Review | Referenced order exists; `review_score` is an integer from 1 to 5; dates parse | Critical |
+| Review | Repeated IDs are profiled under an explicit review policy; empty comments are allowed | Warning |
+| Geolocation | Latitude is within -90 to 90 and longitude within -180 to 180; repeated ZIP prefixes are allowed | Critical |
+| Category translation | Category key is unique; unmatched product categories are reported without dropping products | Warning |
+
+Use decimal arithmetic or integer cents for financial reconciliation. Missing related rows, cancellations, and historical export limitations require investigation; a warning is not proof of corrupt data.
 
 ## Technology stack
+
+Planned stack; dependencies and application code have not been added yet.
 
 | Layer | Technology |
 | --- | --- |
@@ -217,50 +246,37 @@ The generator records which anomalies were injected. These labels are used for e
 
 ## Project structure
 
+Current contents (relative to this README):
+
 ```text
-commerceguard/
-├── data/
-│   ├── raw/
-│   ├── processed/
-│   └── rejected/
-├── notebooks/
-│   ├── 01_exploratory_data_analysis.ipynb
-│   ├── 02_feature_engineering.ipynb
-│   └── 03_model_experiments.ipynb
-├── src/commerceguard/
-│   ├── api/
-│   ├── database/
-│   ├── generator/
-│   ├── ingestion/
-│   ├── validation/
-│   ├── pipelines/
-│   ├── features/
-│   ├── models/
-│   └── monitoring/
-├── dashboard/
-├── tests/
-│   ├── unit/
-│   └── integration/
-├── models/
-├── alembic/
-├── .github/workflows/
-├── .env.example
-├── alembic.ini
-├── pyproject.toml
-└── README.md
+Data_Guard/
+|-- README.md
+`-- dataset/
+    |-- olist_customers_dataset.csv
+    |-- olist_geolocation_dataset.csv
+    |-- olist_order_items_dataset.csv
+    |-- olist_order_payments_dataset.csv
+    |-- olist_order_reviews_dataset.csv
+    |-- olist_orders_dataset.csv
+    |-- olist_products_dataset.csv
+    |-- olist_sellers_dataset.csv
+    `-- product_category_name_translation.csv
 ```
+
+Planned additions include `src/commerceguard/` for ingestion, replay, validation, pipelines, features, models, database, and API code; `notebooks/` for exploration; `data/` for derived and rejected records; `dashboard/`; and `tests/`.
 
 ## Development roadmap
 
 ### Project status
 
-The project is currently in the **planning and data-design stage**.
+The project is currently in the **dataset exploration and planning stage**.
 
 ### MVP
 
 - [ ] Define database entities and relationships
-- [ ] Build a reproducible e-commerce data generator
-- [ ] Generate normal and anomalous daily batches
+- [x] Add the nine Olist CSV files
+- [ ] Build chronological daily replay from order purchase timestamps
+- [ ] Implement reproducible anomaly injection on dataset copies
 - [ ] Perform exploratory data analysis
 - [ ] Create the PostgreSQL schema and migrations
 - [ ] Implement the ETL pipeline
@@ -284,93 +300,30 @@ The project is currently in the **planning and data-design stage**.
 
 ## Getting started
 
-> The commands below describe the planned project interface and will become usable as each component is implemented.
+The repository currently supports dataset inspection. There is no installable package, database migration, API, dashboard, or test suite yet.
 
-### Prerequisites
+From the directory containing this README and `dataset/`, use Python 3.12 to inspect the files without installing dependencies:
 
-- Python 3.12
-- PostgreSQL 15+
-- Git
+```python
+import csv
+from pathlib import Path
 
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/YOUR_USERNAME/commerceguard.git
-cd commerceguard
+for path in sorted(Path("dataset").glob("*.csv")):
+    with path.open(encoding="utf-8-sig", newline="") as handle:
+        reader = csv.reader(handle)
+        columns = next(reader)
+        row_count = sum(1 for _ in reader)
+    print(f"{path.name}: {row_count:,} rows")
+    print("  Columns:", ", ".join(columns))
 ```
 
-### 2. Create a virtual environment
-
-<details>
-<summary>Windows PowerShell</summary>
-
-```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-```
-
-</details>
-
-<details>
-<summary>Linux or macOS</summary>
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-</details>
-
-### 3. Install dependencies
-
-```bash
-pip install -e ".[dev]"
-```
-
-### 4. Configure the environment
-
-Copy `.env.example` to `.env` and configure the database connection:
-
-```env
-DATABASE_URL=postgresql+psycopg://commerceguard:password@localhost:5432/commerceguard
-RAW_DATA_PATH=data/raw
-PROCESSED_DATA_PATH=data/processed
-REJECTED_DATA_PATH=data/rejected
-MODEL_PATH=models/isolation_forest.joblib
-```
-
-Never commit the `.env` file or real credentials.
-
-### 5. Prepare the database
-
-```bash
-alembic upgrade head
-```
-
-### 6. Run the project
-
-```bash
-# Generate 180 days of sample data
-python -m commerceguard.generator --days 180 --inject-anomalies
-
-# Run the ETL and validation pipeline
-python -m commerceguard.pipelines.daily_orders
-
-# Train the anomaly model
-python -m commerceguard.models.train
-
-# Start the API
-uvicorn commerceguard.api.main:app --reload
-
-# Start the dashboard in a second terminal
-streamlit run dashboard/app.py
-```
+Run this in a Python session or save it as a script. Use a CSV parser rather than counting physical lines because review comments can contain embedded newlines. Application setup and run commands will be added as the corresponding components are implemented.
 
 ## Evaluation
 
-Injected anomalies provide ground truth for evaluating the unsupervised model.
+The original Olist files contain no ground-truth pipeline anomaly labels. Planned controlled injections will provide labels for measuring detection of known injected failures; those results do not establish accuracy on naturally occurring anomalies.
 
-The project reports:
+The planned evaluation will report:
 
 - Precision
 - Recall
@@ -380,9 +333,11 @@ The project reports:
 - Percentage of injected anomalies detected
 - Batch-processing time
 
-A chronological train/test split is used so future runs are never used to predict past behavior. Features that only become available after an incident is resolved are excluded to prevent data leakage.
+Use chronological training, validation, and test periods, fitting preprocessing and thresholds only on the appropriate earlier periods. Profile sparse boundary dates and seasonality before interpreting volume changes. Keep untouched reference batches alongside injected copies. Final order statuses, delivery dates, and reviews may occur after purchase; a purchase-date replay is retrospective unless those fields are withheld until their availability can be established.
 
 ## API design
+
+Proposed endpoints; not implemented yet.
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
@@ -396,13 +351,10 @@ A chronological train/test split is used so future runs are never used to predic
 
 ## Testing
 
-```bash
-pytest
-```
+A Pytest suite is planned to cover:
 
-The test suite will cover:
-
-- Reproducible data generation
+- Reproducible historical replay and controlled anomaly injection
+- CSV parsing, composite keys, and aggregation without join fan-out
 - Transformation and validation logic
 - Database operations
 - Feature calculations
@@ -412,7 +364,7 @@ The test suite will cover:
 
 ## Future improvements
 
-- Connect to a public e-commerce dataset or demo API
+- Add another e-commerce dataset or a demo API
 - Detect schema changes and data drift
 - Model weekends, holidays, promotions, and seasonality
 - Explain anomalous metrics more precisely
@@ -436,8 +388,8 @@ CommerceGuard is designed to demonstrate:
 
 ## Privacy and safety
 
-- Synthetic data is used initially to avoid exposing customer information.
-- Real customer data must be anonymized before processing.
+- Preserve the original public dataset and keep experimental modifications in separate files.
+- Treat identifiers, location fields, and free-text reviews with care when publishing examples.
 - Payment card details must never be collected or stored.
 - An anomaly indicates unusual behavior, not proof of fraud or corruption.
 - Predictions should support human investigation rather than silently delete data.
@@ -445,7 +397,7 @@ CommerceGuard is designed to demonstrate:
 
 ## License
 
-This project is intended for educational and portfolio purposes and can be released under the [MIT License](LICENSE).
+This project is intended for educational and portfolio purposes. No code `LICENSE` file is currently included. The Olist dataset is third-party data; consult its [source page](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) for dataset licensing and attribution terms separately from any future code license.
 
 ---
 
